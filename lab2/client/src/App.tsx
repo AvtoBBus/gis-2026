@@ -6,6 +6,9 @@ import { OSM } from "ol/source";
 import ImageLayer from "ol/layer/Image";
 import ImageWMS from "ol/source/ImageWMS";
 
+import apply from "ol-mapbox-style";
+import mapboxStyle from './assets/styles.json';
+
 function App() {
     const mapRef = useRef<Map>(null);
 
@@ -46,6 +49,8 @@ function App() {
                 zoom: 16,
             }),
         });
+
+        apply(mapRef.current, mapboxStyle);
     }, []);
 
     return <div id="map" />;
