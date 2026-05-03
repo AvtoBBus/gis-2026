@@ -5,12 +5,12 @@ LOAD spatial;
 LOAD httpfs;
 
 CREATE OR REPLACE TABLE osm_data AS
-SELECT  FROM ST_Read('D:\учёба\для лаб\gis-2026\map.geojson');
+SELECT * FROM ST_Read('D:/учёба/для лаб/gis-2026/map.geojson');
 
 CREATE OR REPLACE TABLE links AS
 WITH raw_data AS (
-    SELECT 
-    FROM 'httpsstac.overturemaps.org2026-04-15.0buildingsbuildingcollection.json'
+    SELECT *
+    FROM 'https://stac.overturemaps.org/2026-04-15.0/buildings/building/collection.json'
 ),
 raw_links AS (
     SELECT unnest(links) AS link
@@ -19,7 +19,7 @@ raw_links AS (
 links AS (
     SELECT row_number() OVER () id, link.href
     FROM raw_links
-    WHERE link.type = 'applicationgeo+json'
+    WHERE link.type = 'application/geo+json'
 ),
 raw_bboxes AS (
     SELECT unnest(extent.spatial.bbox) bbox
@@ -35,7 +35,7 @@ JOIN bboxes ON links.id = bboxes.id;
 
 SET VARIABLE item_url = (
     SELECT DISTINCT
-        'httpsstac.overturemaps.org2026-04-15.0buildingsbuilding'  links.href
+        'https://stac.overturemaps.org/2026-04-15.0/buildings/building/' || links.href
     FROM links
     JOIN osm_data
         ON ST_Xmin(geom) BETWEEN links.xmin AND links.xmax
@@ -60,7 +60,7 @@ osm_data_bbox AS (
            ST_Ymax(geom) AS ymax
     FROM osm_data_geom_bbox
 )
-SELECT  EXCLUDE geometry, geometry
+SELECT * EXCLUDE geometry, geometry
 FROM read_parquet(getvariable('s3_href')) data
 JOIN osm_data_bbox
     ON ST_Xmin(geometry) BETWEEN osm_data_bbox.xmin AND osm_data_bbox.xmax
@@ -73,7 +73,7 @@ COPY (
         'features', json_group_array(
             json_object(
                 'type', 'Feature',
-                'geometry', ST_AsGeoJSON(ST_SetCRS(geometry, 'EPSG4326'))JSON,
+                'geometry', ST_AsGeoJSON(ST_SetCRS(geometry, 'EPSG:4326'))::JSON,
                 'properties', json_object(
                     'id', id,
                     'source_type', source_type,
@@ -91,13 +91,13 @@ COPY (
             temp.height,
             CASE
                 WHEN osm.geom IS NOT NULL THEN 'my'
-                WHEN list_contains(list_transform(temp.sources, s - s.dataset), 'OpenStreetMap') THEN 'osm'
+                WHEN temp.sources->>'$[0].dataset' LIKE 'OpenStreetMap' THEN 'osm'
                 ELSE 'ml'
             END AS source_type
-        FROM overture_buildings temp
-        LEFT JOIN osm_data osm
-            ON try(ST_Intersects(osm.geom, ST_SetCRS(temp.geometry, 'EPSG4326'))) = true
+        FROM overture_buildings_polygons temp
+        LEFT JOIN geo_data osm
+            ON try(ST_Intersects(osm.geom, ST_SetCRS(temp.geometry, 'EPSG:4326'))) = true
     )
 )
-TO 'overture.json'
+TO 'D:\учёба\для лаб\gis-2026\lab2\client\public\overture.json'
 WITH (FORMAT CSV, HEADER false, QUOTE '');
