@@ -8,8 +8,6 @@ import ImageWMS from "ol/source/ImageWMS";
 
 import apply from "ol-mapbox-style";
 import mapboxStyle from './assets/styles.json';
-import * as olProj from 'ol/proj';
-import { getView } from "ol/View";
 
 function App() {
     const mapRef = useRef<Map>(null);
@@ -53,15 +51,6 @@ function App() {
         });
 
         apply(mapRef.current, mapboxStyle);
-
-        
-        const view = mapRef.current.getView();
-
-        view.on('change', () => {
-            const ext = mapRef.current?.getView().calculateExtent();
-            if (ext) console.log(olProj.transformExtent(ext,  mapRef.current?.getView().getProjection(), 'EPSG:4326'));
-        })
-
     }, []);
 
     return <div id="map" />;

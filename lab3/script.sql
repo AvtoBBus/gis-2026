@@ -4,69 +4,19 @@ INSTALL httpfs;
 LOAD spatial;
 LOAD httpfs;
 
-CREATE OR REPLACE TABLE osm_data AS
+CREATE OR REPLACE TABLE geo_data AS
 SELECT * FROM ST_Read('D:/учёба/для лаб/gis-2026/map.geojson');
 
-CREATE OR REPLACE TABLE links AS
-WITH raw_data AS (
-    SELECT *
-    FROM 'https://stac.overturemaps.org/2026-04-15.0/buildings/building/collection.json'
-),
-raw_links AS (
-    SELECT unnest(links) AS link
-    FROM raw_data
-),
-links AS (
-    SELECT row_number() OVER () id, link.href
-    FROM raw_links
-    WHERE link.type = 'application/geo+json'
-),
-raw_bboxes AS (
-    SELECT unnest(extent.spatial.bbox) bbox
-    FROM raw_data
-),
-bboxes AS (
-    SELECT row_number() OVER () id, bbox[1] xmin, bbox[2] ymin, bbox[3] xmax, bbox[4] ymax
-    FROM raw_bboxes
-)
-SELECT href, xmin, ymin, xmax, ymax
-FROM links
-JOIN bboxes ON links.id = bboxes.id;
-
-SET VARIABLE item_url = (
-    SELECT DISTINCT
-        'https://stac.overturemaps.org/2026-04-15.0/buildings/building/' || links.href
-    FROM links
-    JOIN osm_data
-        ON ST_Xmin(geom) BETWEEN links.xmin AND links.xmax
-        AND ST_Ymin(geom) BETWEEN links.ymin AND links.ymax
-    LIMIT 1
-);
-
-SET VARIABLE s3_href = (
-    SELECT assets.aws.alternate.s3.href
-    FROM read_json(getvariable('item_url'))
-);
-
-CREATE OR REPLACE TABLE overture_buildings AS
-WITH osm_data_geom_bbox AS (
-    SELECT ST_Extent_Agg(geom) geom
-    FROM osm_data
-),
-osm_data_bbox AS (
-    SELECT ST_Xmin(geom) AS xmin,
-           ST_Ymin(geom) AS ymin,
-           ST_Xmax(geom) AS xmax,
-           ST_Ymax(geom) AS ymax
-    FROM osm_data_geom_bbox
-)
-SELECT * EXCLUDE geometry, geometry
-FROM read_parquet(getvariable('s3_href')) data
-JOIN osm_data_bbox
-    ON ST_Xmin(geometry) BETWEEN osm_data_bbox.xmin AND osm_data_bbox.xmax
-    AND ST_Ymin(geometry) BETWEEN osm_data_bbox.ymin AND osm_data_bbox.ymax
-WHERE try(ST_IsValid(geometry)) = true;
-
+CREATE OR REPLACE TABLE overture_buildings_polygons AS
+                  SELECT *
+                  FROM read_parquet(
+                      's3://overturemaps-us-west-2/release/2026-04-15.0/theme=buildings/type=building/*.parquet',
+                      hive_partitioning = true
+                  )
+                  WHERE bbox.xmin <= 50.652266800770775
+                    AND bbox.xmax >= 50.63810100748722
+                    AND bbox.ymin <= 53.27309762671172
+                    AND bbox.ymax >= 53.26603401278885;
 COPY (
     SELECT json_object(
         'type', 'FeatureCollection',
